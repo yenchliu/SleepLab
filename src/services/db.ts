@@ -134,12 +134,6 @@ export async function getSleepLogs(): Promise<SleepLog[]> {
     querySnapshot.forEach((doc) => {
       logs.push(doc.data() as SleepLog);
     });
-    // For demo purposes, if Firebase is empty, seed it (Be careful with this in real prod)
-    if (logs.length === 0) {
-      const sample = generateSampleData();
-      await importSleepLogs(sample);
-      return sample.sort((a, b) => (a.date < b.date ? 1 : -1));
-    }
     return logs.sort((a, b) => (a.date < b.date ? 1 : -1));
   } else {
     const logs = getLocalLogs();
