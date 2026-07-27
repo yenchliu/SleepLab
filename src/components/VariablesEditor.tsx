@@ -74,8 +74,22 @@ export function VariablesEditor({ isOpen, schema, onClose, onSave }: Props) {
                     <option value="number">Number</option>
                     <option value="time">Time (Hr/Min)</option>
                     <option value="slider">Slider (1-10)</option>
+                    <option value="select">Dropdown (Select)</option>
                   </select>
                 </div>
+
+                {item.type === 'select' && (
+                  <div className="w-full">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Options (comma separated)</label>
+                    <input
+                      type="text"
+                      value={item.options?.join(', ') || ''}
+                      onChange={(e) => handleChange(item.id, 'options', e.target.value.split(',').map(s => s.trim()).filter(s => s !== ''))}
+                      className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3"
+                      placeholder="e.g. morning, afternoon, evening"
+                    />
+                  </div>
+                )}
 
                 <div className="flex justify-end w-full sm:w-auto pt-5 sm:pt-6">
                   <button

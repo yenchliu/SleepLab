@@ -20,6 +20,7 @@ interface Props {
 
 export function Analytics({ logs, schema }: Props) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [lagDays, setLagDays] = useState(0);
 
   const chartData = useMemo(() => {
     return logs.map(log => ({
@@ -29,23 +30,56 @@ export function Analytics({ logs, schema }: Props) {
     })).reverse(); // Oldest to newest
   }, [logs]);
 
-  const variableImpact = useMemo(() => {
-    if (logs.length < 3) return []; // Need some data
+  const calculateImpactsForLag = (lag: number) => {
+    if (logs.length < 3) return [];
 
     const booleanVariables = schema.filter(v => v.type === 'boolean');
+    const selectVariables = schema.filter(v => v.type === 'select');
+    
+    const features = [
+       ...booleanVariables.map(v => ({ key: v.id, label: v.label, type: 'boolean' as const })),
+       ...selectVariables.flatMap(v => (v.options || []).map(opt => ({
+           key: `${v.id}::${opt}`,
+           label: `${v.label} (${opt})`,
+           type: 'select' as const,
+           varId: v.id,
+           optionValue: opt
+       })))
+    ];
 
-    const impacts = booleanVariables.map(v => {
-      const logsTrue = logs.filter(l => Boolean(l[v.id]));
-      const logsFalse = logs.filter(l => !Boolean(l[v.id]));
+    const logsByDate = new Map<string, SleepLog>();
+    logs.forEach(l => logsByDate.set(l.date, l));
 
-      const n1 = logsTrue.length;
-      const n2 = logsFalse.length;
+    return features.map(feat => {
+      const matchedPairs: { score: number, val: boolean }[] = [];
+       
+      logs.forEach(log => {
+        const d = parseISO(log.date);
+        const targetDateStr = format(new Date(d.getTime() - lag * 86400000), 'yyyy-MM-dd');
+        const sourceLog = logsByDate.get(targetDateStr);
+        
+        if (sourceLog) {
+          let isTrue = false;
+          if (feat.type === 'boolean') {
+              isTrue = Boolean(sourceLog[feat.key]);
+          } else if (feat.type === 'select') {
+              isTrue = sourceLog[feat.varId] === feat.optionValue;
+          }
+          matchedPairs.push({ score: log.watch_sleep_score, val: isTrue });
+        }
+      });
 
-      const avgTrue = n1 > 0 ? logsTrue.reduce((acc, l) => acc + l.watch_sleep_score, 0) / n1 : 0;
-      const avgFalse = n2 > 0 ? logsFalse.reduce((acc, l) => acc + l.watch_sleep_score, 0) / n2 : 0;
+      const pairsTrue = matchedPairs.filter(p => p.val);
+      const pairsFalse = matchedPairs.filter(p => !p.val);
 
-      const varTrue = n1 > 1 ? logsTrue.reduce((acc, l) => acc + Math.pow(l.watch_sleep_score - avgTrue, 2), 0) / (n1 - 1) : 0;
-      const varFalse = n2 > 1 ? logsFalse.reduce((acc, l) => acc + Math.pow(l.watch_sleep_score - avgFalse, 2), 0) / (n2 - 1) : 0;
+      const n1 = pairsTrue.length;
+      const n2 = pairsFalse.length;
+
+      const avgTrue = n1 > 0 ? pairsTrue.reduce((acc, p) => acc + p.score, 0) / n1 : 0;
+      const avgFalse = n2 > 0 ? pairsFalse.reduce((acc, p) => acc + p.score, 0) / n2 : 0;
+
+      const varTrue = n1 > 1 ? pairsTrue.reduce((acc, p) => acc + Math.pow(p.score - avgTrue, 2), 0) / (n1 - 1) : 0;
+      const varFalse = n2 > 1 ? pairsFalse.reduce((acc, p) => acc + Math.pow(p.score - avgFalse, 2), 0) / (n2 - 1) : 0;
 
       let isSignificant = false;
       let tStat = 0;
@@ -53,13 +87,13 @@ export function Analytics({ logs, schema }: Props) {
          const denom = Math.sqrt(varTrue / n1 + varFalse / n2);
          if (denom > 0) {
             tStat = (avgTrue - avgFalse) / denom;
-            isSignificant = Math.abs(tStat) > 2.0; // Approximation for p < 0.05
+            isSignificant = Math.abs(tStat) > 2.0;
          }
       }
 
       return {
-        label: v.label,
-        key: v.id,
+        label: feat.label,
+        key: feat.key,
         impact: avgTrue - avgFalse,
         avgTrue,
         avgFalse,
@@ -69,21 +103,38 @@ export function Analytics({ logs, schema }: Props) {
         countTrue: n1,
         countFalse: n2,
         valid: n1 > 0 && n2 > 0,
-        isSignificant
+        isSignificant,
+        lag
       };
-    }).filter(v => v.valid).sort((a, b) => b.impact - a.impact);
+    }).filter(v => v.valid);
+  };
 
-    return impacts;
+  const detailedImpact = useMemo(() => calculateImpactsForLag(lagDays).sort((a, b) => b.impact - a.impact), [logs, schema, lagDays]);
+
+  const aggregatedImpact = useMemo(() => {
+    const allLags = [0, 1, 2, 3, 4, 5, 6, 7].map(calculateImpactsForLag);
+    const bestImpacts = new Map<string, any>();
+
+    allLags.forEach(lagImpacts => {
+      lagImpacts.forEach(impact => {
+        const existing = bestImpacts.get(impact.key);
+        if (!existing || Math.abs(impact.tStat) > Math.abs(existing.tStat)) {
+          bestImpacts.set(impact.key, impact);
+        }
+      });
+    });
+
+    return Array.from(bestImpacts.values()).sort((a, b) => b.impact - a.impact);
   }, [logs, schema]);
 
   const optimalRoutine = useMemo(() => {
-    if (logs.length < 7) return null; // Require 7 days
+    if (logs.length < 7) return null;
 
-    const positiveRoutines = variableImpact.filter(v => v.impact > 0 && v.isSignificant);
-    const negativeRoutines = variableImpact.filter(v => v.impact < 0 && v.isSignificant);
+    const positiveRoutines = aggregatedImpact.filter(v => v.impact > 0 && v.isSignificant);
+    const negativeRoutines = aggregatedImpact.filter(v => v.impact < 0 && v.isSignificant);
 
     return { positiveRoutines, negativeRoutines };
-  }, [variableImpact, logs.length]);
+  }, [aggregatedImpact, logs.length]);
 
   return (
     <>
@@ -117,15 +168,20 @@ export function Analytics({ logs, schema }: Props) {
 
       {/* Variable Impact */}
       <div className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl p-6">
-        <h3 className="text-lg leading-6 font-medium text-gray-900 mb-1">Variable Impact Analysis</h3>
-        <p className="text-sm text-gray-500 mb-6">Difference in average sleep score when boolean variable is True vs False.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+          <div>
+            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-1">Variable Impact Analysis</h3>
+            <p className="text-sm text-gray-500">Difference in average sleep score when a habit is present vs absent (0-7 days lag).</p>
+          </div>
+        </div>
         
-        {variableImpact.length > 0 ? (
+        {aggregatedImpact.length > 0 ? (
           <div className="space-y-4">
-            {variableImpact.map(item => (
+            {aggregatedImpact.map(item => (
               <div key={item.key} className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">
                   {item.label}
+                  {item.lag > 0 && <span className="ml-2 text-[10px] text-gray-500">({item.lag} day lag)</span>}
                   {item.isSignificant && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">Significant</span>}
                 </span>
                 <div className="flex items-center gap-3">
@@ -175,7 +231,10 @@ export function Analytics({ logs, schema }: Props) {
                   optimalRoutine.positiveRoutines.map(r => (
                     <li key={r.key} className="flex items-center text-sm">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 mr-3"></span>
-                      {r.label} <span className="opacity-60 ml-2 text-xs">(+{r.impact.toFixed(1)} pts)</span>
+                      {r.label} 
+                      <span className="opacity-60 ml-2 text-xs">
+                        (+{r.impact.toFixed(1)} pts{r.lag > 0 ? ` after ${r.lag} days` : ''})
+                      </span>
                     </li>
                   ))
                 ) : (
@@ -191,7 +250,10 @@ export function Analytics({ logs, schema }: Props) {
                   optimalRoutine.negativeRoutines.map(r => (
                     <li key={r.key} className="flex items-center text-sm">
                       <span className="w-2 h-2 rounded-full bg-rose-400 mr-3"></span>
-                      {r.label} <span className="opacity-60 ml-2 text-xs">({r.impact.toFixed(1)} pts)</span>
+                      {r.label} 
+                      <span className="opacity-60 ml-2 text-xs">
+                        ({r.impact.toFixed(1)} pts{r.lag > 0 ? ` after ${r.lag} days` : ''})
+                      </span>
                     </li>
                   ))
                 ) : (
@@ -224,9 +286,27 @@ export function Analytics({ logs, schema }: Props) {
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Statistical Breakdown</h2>
-              <button onClick={() => setIsDrawerOpen(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Lag Days:</label>
+                  <select
+                    value={lagDays}
+                    onChange={e => setLagDays(Number(e.target.value))}
+                    className="block w-24 rounded-md border-0 py-1.5 pl-3 pr-8 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm bg-white"
+                  >
+                    <option value={0}>0 (Same day)</option>
+                    <option value={1}>1 day</option>
+                    <option value={2}>2 days</option>
+                    <option value={3}>3 days</option>
+                    <option value={4}>4 days</option>
+                    <option value={5}>5 days</option>
+                    <option value={7}>7 days</option>
+                  </select>
+                </div>
+                <button onClick={() => setIsDrawerOpen(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 pb-12">
@@ -235,7 +315,7 @@ export function Analytics({ logs, schema }: Props) {
               </p>
               
               <div className="space-y-6">
-                {variableImpact.length > 0 ? variableImpact.map(item => (
+                {detailedImpact.length > 0 ? detailedImpact.map(item => (
                   <div key={item.key} className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
                     <div className="flex justify-between items-start mb-3">
                       <h4 className="font-medium text-gray-900">{item.label}</h4>

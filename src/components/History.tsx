@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { SleepLog, VariableDef } from '../types';
-import { deleteSleepLog, clearAllSleepLogs, importSleepLogs } from '../services/db';
-import { Trash2, Edit2, CheckCircle2, XCircle, Download, Upload, AlertTriangle } from 'lucide-react';
+import { deleteSleepLog, clearAllSleepLogs, importSleepLogs, generateSampleData } from '../services/db';
+import { Trash2, Edit2, CheckCircle2, XCircle, Download, Upload, AlertTriangle, Database } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -27,6 +27,11 @@ export function History({ logs, schema, onEdit }: Props) {
   const handleClearAllConfirm = async () => {
     await clearAllSleepLogs();
     setIsConfirmClearOpen(false);
+  };
+
+  const handleLoadSampleData = async () => {
+    const sample = generateSampleData();
+    await importSleepLogs(sample);
   };
 
   const getExpectedHeaders = () => {
@@ -157,6 +162,14 @@ export function History({ logs, schema, onEdit }: Props) {
 
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row gap-3 justify-end items-center bg-white p-4 shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl">
+        <button 
+          onClick={handleLoadSampleData}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm ring-1 ring-inset ring-indigo-300 hover:bg-indigo-100 mr-auto"
+        >
+          <Database className="w-4 h-4 text-indigo-500" />
+          Load Sample Data
+        </button>
+
         <button 
           onClick={handleExportCSV}
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"

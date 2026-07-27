@@ -1,4 +1,4 @@
-export type VariableType = 'boolean' | 'number' | 'time' | 'slider';
+export type VariableType = 'boolean' | 'number' | 'time' | 'slider' | 'select';
 
 export interface VariableDef {
   id: string;
@@ -6,6 +6,7 @@ export interface VariableDef {
   type: VariableType;
   min?: number;
   max?: number;
+  options?: string[];
 }
 
 export type SleepLog = {
@@ -21,7 +22,7 @@ export type SleepLog = {
 };
 
 export const DEFAULT_VARIABLES: VariableDef[] = [
-  { id: 'morning_supplements', label: 'Morning Supplements', type: 'boolean' },
+  { id: 'supplements', label: 'Supplements', type: 'select', options: ['morning', 'afternoon', 'evening'] },
   { id: 'caffeine_after_12pm', label: 'Caffeine after 12pm', type: 'boolean' },
   { id: 'daytime_nap', label: 'Daytime Nap (mins)', type: 'number' },
   { id: 'late_night_snack', label: 'Late Night Snack', type: 'boolean' },

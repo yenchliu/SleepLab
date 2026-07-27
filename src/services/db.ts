@@ -7,7 +7,7 @@ const USE_FIREBASE = Boolean(db);
 const LOCAL_STORAGE_KEY = 'sleep_logs_v1';
 const LOCAL_SCHEMA_KEY = 'sleep_logs_schema_v1';
 
-function generateSampleData(): SleepLog[] {
+export function generateSampleData(): SleepLog[] {
   const data: SleepLog[] = [];
   for (let i = 0; i < 30; i++) {
     const d = subDays(new Date(), i);
@@ -32,9 +32,14 @@ function generateSampleData(): SleepLog[] {
     if (r > 0.8) nap = 30;
     else if (r > 0.6) nap = 15;
 
+    let supplements = '';
+    const suppRand = Math.random();
+    if (suppRand > 0.7) supplements = 'morning';
+    else if (suppRand > 0.4) supplements = 'evening';
+    
     data.push({
       date: dateStr,
-      morning_supplements: Math.random() > 0.3,
+      supplements: supplements,
       caffeine_after_12pm: Math.random() > 0.6,
       daytime_nap: nap,
       late_night_snack: hasLateSnack,
@@ -74,12 +79,16 @@ export async function getVariablesSchema(): Promise<VariableDef[]> {
     }
   }
 
-  // Migration for label update
+  // Migrations
   let needsSave = false;
   schema = schema.map(v => {
     if (v.id === 'ac_temp_optimal' && v.label === 'AC <= 22°C') {
       needsSave = true;
       return { ...v, label: 'AC cold enough' };
+    }
+    if (v.id === 'morning_supplements') {
+      needsSave = true;
+      return { id: 'supplements', label: 'Supplements', type: 'select', options: ['morning', 'afternoon', 'evening'] };
     }
     return v;
   });
@@ -127,17 +136,27 @@ export async function importSleepLogs(newLogs: SleepLog[]): Promise<void> {
   }
 }
 
+function migrateLog(log: SleepLog): SleepLog {
+  if ('morning_supplements' in log) {
+    if (log['morning_supplements'] === true) {
+      log['supplements'] = 'morning';
+    }
+    delete log['morning_supplements'];
+  }
+  return log;
+}
+
 export async function getSleepLogs(): Promise<SleepLog[]> {
   if (USE_FIREBASE && db) {
     const querySnapshot = await getDocs(collection(db, 'sleep_logs'));
     const logs: SleepLog[] = [];
     querySnapshot.forEach((doc) => {
-      logs.push(doc.data() as SleepLog);
+      logs.push(migrateLog(doc.data() as SleepLog));
     });
     return logs.sort((a, b) => (a.date < b.date ? 1 : -1));
   } else {
     const logs = getLocalLogs();
-    return Object.values(logs).sort((a, b) => (a.date < b.date ? 1 : -1));
+    return Object.values(logs).map(migrateLog).sort((a, b) => (a.date < b.date ? 1 : -1));
   }
 }
 
@@ -181,7 +200,7 @@ export function subscribeToSleepLogs(callback: (logs: SleepLog[]) => void): () =
     const unsubscribe = onSnapshot(collection(db, 'sleep_logs'), (snapshot) => {
       const logs: SleepLog[] = [];
       snapshot.forEach((doc) => {
-        logs.push(doc.data() as SleepLog);
+        logs.push(migrateLog(doc.data() as SleepLog));
       });
       callback(logs.sort((a, b) => (a.date < b.date ? 1 : -1)));
     });
@@ -190,7 +209,7 @@ export function subscribeToSleepLogs(callback: (logs: SleepLog[]) => void): () =
     // For local storage, we just return the initial fetch and a no-op unsubscribe
     // Polling could be added here if needed, but not necessary for local.
     const logs = getLocalLogs();
-    callback(Object.values(logs).sort((a, b) => (a.date < b.date ? 1 : -1)));
+    callback(Object.values(logs).map(migrateLog).sort((a, b) => (a.date < b.date ? 1 : -1)));
     return () => {};
   }
 }
