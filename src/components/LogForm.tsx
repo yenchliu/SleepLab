@@ -190,7 +190,7 @@ export function LogForm({ onSaved, editLog, logs, schema, onSchemaUpdate }: Prop
           >
             <option value="">-- Select --</option>
             {v.options?.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
+              <option key={opt} value={opt} className="capitalize">{opt}</option>
             ))}
           </select>
         </div>

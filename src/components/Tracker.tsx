@@ -62,6 +62,19 @@ export function Tracker({ logs, schema }: Props) {
     if (v.type === 'boolean') {
       return val ? 'bg-indigo-500' : 'bg-gray-100';
     }
+
+    if (v.type === 'select') {
+      if (!val || val === 'none') return 'bg-gray-100';
+      const options = (v.options || []).filter(o => o !== 'none');
+      if (options.length === 0) return 'bg-gray-100';
+      const idx = options.indexOf(val);
+      if (idx === -1) return 'bg-gray-100';
+      
+      const shades = ['bg-indigo-300', 'bg-indigo-400', 'bg-indigo-500', 'bg-indigo-600', 'bg-indigo-700', 'bg-indigo-800', 'bg-indigo-900'];
+      const ratio = options.length > 1 ? idx / (options.length - 1) : 0.5;
+      const shadeIdx = Math.round(ratio * (shades.length - 1));
+      return shades[shadeIdx];
+    }
     
     // For numeric/time/slider types, scale opacity based on max value
     const numVal = Number(val) || 0;
@@ -88,8 +101,12 @@ export function Tracker({ logs, schema }: Props) {
       const mins = Math.round((val - hrs) * 60);
       return `${hrs}h ${mins}m`;
     }
+
+    if (v.type === 'select' && typeof val === 'string') {
+      return val.charAt(0).toUpperCase() + val.slice(1);
+    }
     
-    return val !== undefined ? String(val) : 'None';
+    return val !== undefined && val !== '' ? String(val) : 'None';
   };
 
   const columns = Math.ceil(heatMapData.length / 7);
@@ -185,23 +202,43 @@ export function Tracker({ logs, schema }: Props) {
             
             {/* Legend for non-boolean variables */}
             {v.type !== 'boolean' && (
-              <div className="mt-4 flex items-center justify-end gap-3 text-[10px] text-gray-500">
+              <div className="mt-4 flex items-center justify-end gap-3 text-[10px] text-gray-500 flex-wrap">
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 rounded-[2px] bg-gray-100 border border-gray-200"></div>
                   <span>None</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-[2px] bg-indigo-300"></div>
-                  <span>Low</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-[2px] bg-indigo-500"></div>
-                  <span>Med</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-[2px] bg-indigo-700"></div>
-                  <span>High</span>
-                </div>
+                {v.type === 'select' ? (
+                  (() => {
+                    const options = (v.options || []).filter(o => o !== 'none');
+                    if (options.length === 0) return null;
+                    const shades = ['bg-indigo-300', 'bg-indigo-400', 'bg-indigo-500', 'bg-indigo-600', 'bg-indigo-700', 'bg-indigo-800', 'bg-indigo-900'];
+                    return options.map((opt, idx) => {
+                      const ratio = options.length > 1 ? idx / (options.length - 1) : 0.5;
+                      const shadeIdx = Math.round(ratio * (shades.length - 1));
+                      return (
+                        <div key={opt} className="flex items-center gap-1">
+                          <div className={`w-3 h-3 rounded-[2px] ${shades[shadeIdx]}`}></div>
+                          <span className="capitalize">{opt}</span>
+                        </div>
+                      );
+                    });
+                  })()
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-[2px] bg-indigo-300"></div>
+                      <span>Low</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-[2px] bg-indigo-500"></div>
+                      <span>Med</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-[2px] bg-indigo-700"></div>
+                      <span>High</span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>

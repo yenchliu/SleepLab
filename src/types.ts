@@ -22,7 +22,7 @@ export type SleepLog = {
 };
 
 export const DEFAULT_VARIABLES: VariableDef[] = [
-  { id: 'supplements', label: 'Supplements', type: 'select', options: ['morning', 'afternoon', 'evening'] },
+  { id: 'supplements', label: 'Supplements', type: 'select', options: ['none', 'morning', 'afternoon', 'evening'] },
   { id: 'caffeine_after_12pm', label: 'Caffeine after 12pm', type: 'boolean' },
   { id: 'daytime_nap', label: 'Daytime Nap (mins)', type: 'number' },
   { id: 'late_night_snack', label: 'Late Night Snack', type: 'boolean' },

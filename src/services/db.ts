@@ -32,7 +32,7 @@ export function generateSampleData(): SleepLog[] {
     if (r > 0.8) nap = 30;
     else if (r > 0.6) nap = 15;
 
-    let supplements = '';
+    let supplements = 'none';
     const suppRand = Math.random();
     if (suppRand > 0.7) supplements = 'morning';
     else if (suppRand > 0.4) supplements = 'evening';
@@ -88,7 +88,11 @@ export async function getVariablesSchema(): Promise<VariableDef[]> {
     }
     if (v.id === 'morning_supplements') {
       needsSave = true;
-      return { id: 'supplements', label: 'Supplements', type: 'select', options: ['morning', 'afternoon', 'evening'] };
+      return { id: 'supplements', label: 'Supplements', type: 'select', options: ['none', 'morning', 'afternoon', 'evening'] };
+    }
+    if (v.id === 'supplements' && !v.options?.includes('none')) {
+      needsSave = true;
+      return { ...v, options: ['none', ...(v.options || [])] };
     }
     return v;
   });
